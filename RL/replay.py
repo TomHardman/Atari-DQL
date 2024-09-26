@@ -34,6 +34,16 @@ class ExperienceReplay:
         r_batch = torch.Tensor([transition.reward for transition in sample]).to(device)
         done_batch = torch.Tensor([transition.done for transition in sample]).to(device)
         return s_batch, a_batch, r_batch, s_prime_batch, done_batch
+    
+    def display_memory_usage(self):
+        total_memory = 0
+        for transition in self.memory:
+            total_memory += transition.s.element_size() * transition.s.numel()
+            total_memory += transition.s_prime.element_size() * transition.s_prime.numel()
+
+        total_memory_mb = total_memory / (1024 ** 2)  # Convert bytes to megabytes
+        print(f"Memory usage of Experience Replay: {total_memory_mb:.2f} MB")
+        return total_memory_mb
 
     def __len__(self):
         return len(self.memory)
