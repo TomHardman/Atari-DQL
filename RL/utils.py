@@ -33,8 +33,7 @@ def process_image(image: list, device, crop_top=None, crop_bottom=None, crop_lef
     """
     Takes image in shape rows x columns x channels, crops, then downsamples by a factor of 2
     """
-    image = torch.Tensor(image)
-    image.to(device)
+    image = torch.Tensor(image).to(device)
 
     if crop_top is None:
         crop_top = 0

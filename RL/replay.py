@@ -26,13 +26,13 @@ class ExperienceReplay:
         self.memory[self.position] = transition
         self.position = (self.position + 1) % self.capacity
 
-    def sample(self, batch_size):
+    def sample(self, batch_size, device):
         sample = random.sample(self.memory, min(batch_size, len(self.memory)))
-        s_batch = torch.stack([transition.s for transition in sample])
-        s_prime_batch = torch.stack([transition.s_prime for transition in sample])
-        a_batch = torch.tensor([transition.action for transition in sample], dtype=torch.int64)
-        r_batch = torch.Tensor([transition.reward for transition in sample])
-        done_batch = torch.Tensor([transition.done for transition in sample])
+        s_batch = torch.stack([transition.s for transition in sample]).to(device)
+        s_prime_batch = torch.stack([transition.s_prime for transition in sample]).to(device)
+        a_batch = torch.tensor([transition.action for transition in sample], dtype=torch.int64).to(device)
+        r_batch = torch.Tensor([transition.reward for transition in sample]).to(device)
+        done_batch = torch.Tensor([transition.done for transition in sample]).to(device)
         return s_batch, a_batch, r_batch, s_prime_batch, done_batch
 
     def __len__(self):

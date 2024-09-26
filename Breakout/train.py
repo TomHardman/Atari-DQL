@@ -33,7 +33,8 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
             if i % update_period == 0:
                 loss = update_dqn(dqn, target_dqn, criterion, optimizer, replay, batch_size=batch_size, gamma=gamma, double=double)
                 loss_buffer.push(loss)
-                print(u)
+                if u % 10 == 0:
+                    print(f'Update Step {u}')
                 u += 1
             if u % target_update_period == 0:
                 target_dqn.load_state_dict(dqn.state_dict()) # transfer weights from online network to target network
@@ -48,7 +49,7 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
 def test_loop(env, agent, test_episodes=100):
     observation, info = env.reset()
     eps = agent.epsilon
-    agent.epsilon = 0.0 # ensure that the agent is acting greedily during test
+    agent.epsilon = 0.01 # ensure that the agent is acting greedily during test
     results = []
     
     for _ in range(test_episodes):
@@ -58,6 +59,7 @@ def test_loop(env, agent, test_episodes=100):
             action = agent.act(observation, device=device, crop=(50, None, None, None))
             observation, reward, terminated, truncated, info = env.step(action)
             score += reward
+            print(info['lives'], score)
             
             done = terminated or truncated
             if done:
@@ -70,7 +72,7 @@ def test_loop(env, agent, test_episodes=100):
                 
 
 def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay, batch_size=32, gamma=0.9, double=True):
-    s_batch, a_batch, r_batch, s_prime_batch, done_batch = replay.sample(batch_size)
+    s_batch, a_batch, r_batch, s_prime_batch, done_batch = replay.sample(batch_size, device=device)
     q_values = dqn(s_batch)
     
     if double: # online network used to select action, target network used to evaluate action
@@ -95,13 +97,10 @@ def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay, 
 def main(args):
     env = gym.make('Breakout-v0')
 
-    dqn = BasicCNN((80, 80), 3, 4)
-    target_dqn = BasicCNN((80, 80), 3, 4)
+    dqn = BasicCNN((80, 80), 3, 4).to(device)
+    target_dqn = BasicCNN((80, 80), 3, 4).to(device)
     replay = ExperienceReplay(capacity=args.capacity)
     loss_buffer = LossBuffer()
-
-    dqn.to(device)
-    target_dqn.to(device)
 
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(dqn.parameters(), lr=args.learning_rate)
@@ -116,8 +115,9 @@ def main(args):
                           target_update_period=args.target_update_period, gamma=gamma, double=args.double)
         
         if ep % args.test_period == 0:
-            wins, losses, draws = test_loop(env, agent, args.test_episodes)
-            print(f'Episode {ep+1} > Wins: {wins}, Losses: {losses}, Draws: {draws}')
+            print(f'Testing')
+            score = test_loop(env, agent, args.test_episodes)
+            print(f'Test after Episode {ep+1} > Score: {score}')
         
         if ep % args.lr_decay_period == 0:
             optimizer.param_groups[0]['lr'] = optimizer.param_groups[0]['lr'] * 0.2
@@ -129,11 +129,11 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a DQN agent')
-    parser.add_argument('--batch_size', type=int, default=32, help='path to the pretrained model')
+    parser.add_argument('--batch_size', type=int, default=128, help='path to the pretrained model')
     parser.add_argument('--model_path', type=str, default='')
     parser.add_argument('--update_period', type=int, default=8)
     parser.add_argument('--target_update_period', type=int, default=1000)
-    parser.add_argument('--test_period', type=int, default=1000)
+    parser.add_argument('--test_period', type=int, default=2)
     parser.add_argument('--test_episodes', type=int, default=1)
     parser.add_argument('--gamma', type=float, default=0.9)
     parser.add_argument('--epsilon', type=float, default=0.2)
