@@ -3,6 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import os
 import sys
+from torch.profiler import profile, record_function, ProfilerActivity
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from RL import Atari_DQLAgent, BasicCNN, ExperienceReplay, Transition, LossBuffer, process_image
@@ -11,31 +12,41 @@ import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
 def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay, dqn, target_dqn, loss_buffer, gamma=0.9,
                batch_size=32, update_period=8, target_update_period=500, double=True):
         
-        observation, info = env.reset()
-        dqn.train()
-        s = process_image(observation, device=device, crop_top=50)
-        
+    observation, info = env.reset()
+    dqn.train()
+    s = process_image(observation, device=device, crop_top=50)
+    
+    with profile(
+        activities=[
+            ProfilerActivity.CPU,
+            ProfilerActivity.CUDA,
+        ],
+        profile_memory=True,
+        record_shapes=True
+    ) as prof:
         while True:
-            action = agent.act(observation, device=device, crop=(50, None, None, None))
+            with record_function("agent_action"):
+                action = agent.act(observation, device=device, crop=(50, None, None, None))
             observation, reward, terminated, truncated, info = env.step(action)
 
-            s_prime = process_image(observation, device=device, crop_top=50)
+            with record_function("a_process_image"):
+                s_prime = process_image(observation, device=device, crop_top=50)
             transition = Transition(s, s_prime, action, reward, terminated)
             replay.push(transition)
             s = s_prime
 
-
             i += 1
             if i % update_period == 0:
-                loss = update_dqn(dqn, target_dqn, criterion, optimizer, replay, batch_size=batch_size, gamma=gamma, double=double)
-                loss_buffer.push(loss)
-                if u % 10 == 0:
-                    print(f'Update Step {u}')
-                u += 1
+                with record_function("a_update_dqn"):
+                    loss = update_dqn(dqn, target_dqn, criterion, optimizer, replay, 
+                                       batch_size=batch_size, gamma=gamma, double=double)
+                    loss_buffer.push(loss)
+                    if u % 10 == 0:
+                        print(f'Update Step {u}')
+                    u += 1
             if u % target_update_period == 0:
                 target_dqn.load_state_dict(dqn.state_dict()) # transfer weights from online network to target network
             
@@ -43,10 +54,10 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
             if done:
                 break
 
-        return i, u
-
+    return i, u, prof
 
 def test_loop(env, agent, test_episodes=100):
+    # Unchanged
     observation, info = env.reset()
     eps = agent.epsilon
     agent.epsilon = 0.01 # ensure that the agent is acting greedily during test
@@ -69,8 +80,6 @@ def test_loop(env, agent, test_episodes=100):
     agent.epsilon = eps
     return results
     
-                
-
 def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay, batch_size=32, gamma=0.9, double=True):
     s_batch, a_batch, r_batch, s_prime_batch, done_batch = replay.sample(batch_size, device=device)
     q_values = dqn(s_batch)
@@ -80,7 +89,6 @@ def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay, 
         q_values_tgt = target_dqn(s_prime_batch)
         nxt_actions = torch.argmax(q_values_prime, dim=1)
         q_tgt = q_values_tgt[range(len(a_batch)), nxt_actions]
-
     else:
         q_values_tgt = target_dqn(s_prime_batch)
         q_tgt = torch.max(q_values_tgt, dim=1).values
@@ -93,12 +101,16 @@ def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay, 
     optimizer.step()
     return loss.item()
 
-
 def main(args):
-    env = gym.make('Breakout-v0')
+    env = gym.make('Breakout-v0', obs_type=args.obs_type)
 
-    dqn = BasicCNN((80, 80), 3, 4).to(device)
-    target_dqn = BasicCNN((80, 80), 3, 4).to(device)
+    if args.obs_type == 'rgb':
+        inp_chan = 3
+    else:
+        inp_chan = 1
+
+    dqn = BasicCNN((80, 80), inp_chan, 4).to(device)
+    target_dqn = BasicCNN((80, 80), 1, 4).to(device)
     replay = ExperienceReplay(capacity=args.capacity)
     loss_buffer = LossBuffer()
 
@@ -110,14 +122,17 @@ def main(args):
     epsilon = args.epsilon
     
     for ep in range(int(args.episodes)):
-        i, u = train_loop(i, u, env, criterion, optimizer, loss_buffer=loss_buffer, agent=agent, replay=replay, dqn=dqn, target_dqn=target_dqn, 
+        i, u, prof = train_loop(i, u, env, criterion, optimizer, loss_buffer=loss_buffer, agent=agent, replay=replay, dqn=dqn, target_dqn=target_dqn, 
                           batch_size=args.batch_size, update_period=args.update_period, 
                           target_update_period=args.target_update_period, gamma=gamma, double=args.double)
         
+        # Print profiler results at the end
+        print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+        
         if ep % args.test_period == 0:
             print(f'Testing')
-            score = test_loop(env, agent, args.test_episodes)
-            print(f'Test after Episode {ep+1} > Score: {score}')
+            #score = test_loop(env, agent, args.test_episodes)
+            #print(f'Test after Episode {ep+1} > Score: {score}')
         
         if ep % args.lr_decay_period == 0:
             optimizer.param_groups[0]['lr'] = optimizer.param_groups[0]['lr'] * 0.2
@@ -125,7 +140,6 @@ def main(args):
         epsilon = max(epsilon * args.epsilon_decay, 0.1)
         #gamma = max((0.9 - args.gamma_tc**(ep+1)), 0)
         agent.epsilon = epsilon
- 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a DQN agent')
@@ -146,6 +160,7 @@ if __name__ == '__main__':
     parser.add_argument('--sequential', type=bool, default=False)
     parser.add_argument('--double', type=bool, default=True, help='Whether to use double DQN')
     parser.add_argument('--save_path', type=str, default='models/')
+    parser.add_argument('--obs-type', type=str, default='grayscale')
 
     args = parser.parse_args()
     main(args)

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
-import torchvision.transforms.functional as F
+import torch.nn.functional as F
+import numpy as np
 import torch
+from torch.profiler import profile, record_function, ProfilerActivity
 
 class LossBuffer:
     def __init__(self, plot_freq=5000) -> None:
@@ -29,11 +31,14 @@ class LossBuffer:
 
 
 def process_image(image: list, device, crop_top=None, crop_bottom=None, crop_left=None, crop_right=None,
-                  downsample_Factor: int=2, grayscale=False) -> torch.Tensor: 
+                  downsample_factor: int=2, grayscale=False) -> torch.Tensor: 
     """
     Takes image in shape rows x columns x channels, crops, then downsamples by a factor of 2
     """
-    image = torch.Tensor(image).to(device)
+
+    with record_function("image_convert"):
+        image = image.astype(np.float32)
+        image = torch.from_numpy(image).to(device)
 
     if crop_top is None:
         crop_top = 0
@@ -44,10 +49,18 @@ def process_image(image: list, device, crop_top=None, crop_bottom=None, crop_lef
     if crop_right is None:
         crop_right = image.shape[1]
     
-    image = image[crop_top:crop_bottom, crop_left:crop_right, :]
-    image = image.permute(2, 0, 1)
-    if grayscale:
-        image = F.rgb_to_grayscale(image)
-    image = F.resize(image, (image.shape[1]//downsample_Factor, image.shape[2]//downsample_Factor))
+    with record_function("aa_crop_permute"):
+        if len(image.shape) == 3:
+            image = image[crop_top:crop_bottom, crop_left:crop_right, :]
+            image = image.permute(2, 0, 1)
+        else:
+            image = image[crop_top:crop_bottom, crop_left:crop_right]
+            image = image.unsqueeze(0)
+
+    with record_function("aa_interpolate"):
+        image = F.interpolate(image.unsqueeze(0), 
+                          scale_factor=1/downsample_factor, 
+                          mode='bilinear', 
+                          align_corners=False).squeeze(0)
     
     return image
