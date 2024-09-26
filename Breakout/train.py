@@ -17,13 +17,13 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
         
         observation, info = env.reset()
         dqn.train()
-        s = process_image(observation, crop_top=50)
+        s = process_image(observation, device=device, crop_top=50)
         
         while True:
-            action = agent.act(observation, crop=(50, None, None, None))
+            action = agent.act(observation, device=device, crop=(50, None, None, None))
             observation, reward, terminated, truncated, info = env.step(action)
 
-            s_prime = process_image(observation, crop_top=50)
+            s_prime = process_image(observation, device=device, crop_top=50)
             transition = Transition(s, s_prime, action, reward, terminated)
             replay.push(transition)
             s = s_prime
@@ -55,7 +55,7 @@ def test_loop(env, agent, test_episodes=100):
         observation, info = env.reset()
         score = 0
         while True:
-            action = agent.act(observation, crop=(50, None, None, None))
+            action = agent.act(observation, device=device, crop=(50, None, None, None))
             observation, reward, terminated, truncated, info = env.step(action)
             score += reward
             
@@ -99,6 +99,9 @@ def main(args):
     target_dqn = BasicCNN((80, 80), 3, 4)
     replay = ExperienceReplay(capacity=args.capacity)
     loss_buffer = LossBuffer()
+
+    dqn.to(device)
+    target_dqn.to(device)
 
     criterion = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(dqn.parameters(), lr=args.learning_rate)

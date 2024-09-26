@@ -39,9 +39,9 @@ class Atari_DQLAgent():
         self.epsilon = epsilon
         self.a_size = a_size
 
-    def act(self, observation, crop):
+    def act(self, observation, device, crop):
         self.q_network.eval()
-        observation = process_image(observation, crop_top=crop[0], crop_bottom=crop[1], 
+        observation = process_image(observation, device=device, crop_top=crop[0], crop_bottom=crop[1], 
                                     crop_left=crop[2], crop_right=crop[3])
         
         if np.random.rand() < self.epsilon:
