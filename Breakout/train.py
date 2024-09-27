@@ -100,15 +100,12 @@ def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay,
     return loss.item()
 
 def main(args):
-    env = gym.make('Breakout-v0', obs_type=args.obs_type, frameskip=4)
-
-    if args.obs_type == 'rgb':
-        inp_chan = 3
-    else:
-        inp_chan = 1
-
-    dqn = BasicCNN((80, 80), inp_chan, 4).to(device)
-    target_dqn = BasicCNN((80, 80), 1, 4).to(device)
+    env = gym.make('ALE/Breakout-v5', frameskip=1, full_action_space=False, obs_type=args.obs_type)
+    env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=False)
+    env = gym.wrappers.FrameStack(env, num_stack=4)
+    
+    dqn = BasicCNN((80, 80), 4, 4).to(device)
+    target_dqn = BasicCNN((80, 80), 4, 4).to(device)
     replay = ExperienceReplay(capacity=args.capacity)
     
     loss_buffer = Buffer()
