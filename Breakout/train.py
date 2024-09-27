@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import os
 import sys
-from torch.profiler import profile, record_function, ProfilerActivity
+from torch.profiler import profile, record_function, ProfilerActivity, to_tensor
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from RL import Atari_DQLAgent, BasicCNN, ExperienceReplay, Transition, Buffer, process_image
@@ -19,12 +19,12 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
         
     observation, info = env.reset()
     dqn.train()
-    s = process_image(observation, device=device, crop_top=50)
+    s = to_tensor(observation, device=device)
     
     while True:
         action = agent.act(observation, device=device, crop=(50, None, None, None))
         observation, reward, terminated, truncated, info = env.step(action)
-        s_prime = process_image(observation, device=device, crop_top=50)
+        s_prime = to_tensor(observation, device=device)
         transition = Transition(s, s_prime, action, reward, terminated)
         replay.push(transition)
         s = s_prime

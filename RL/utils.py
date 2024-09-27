@@ -32,7 +32,14 @@ class Buffer:
     
     def __len__(self):
         return len(self.short_memory)
+    
 
+def to_tensor(image_stack: np.ndarray, device) -> torch.Tensor:
+    """
+    Converts numpy image stack to torch tensor
+    """
+    image_stack = torch.from_numpy(image_stack).to(device)
+    return image_stack
 
 def process_image(image: list, device, crop_top=None, crop_bottom=None, crop_left=None, crop_right=None,
                   downsample_factor: int=2, grayscale=False) -> torch.Tensor: 

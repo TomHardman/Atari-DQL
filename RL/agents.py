@@ -1,7 +1,7 @@
 import random
 import numpy as np
 import torch
-from .utils import process_image
+from .utils import to_tensor
 
 
 class RandomAgent:
@@ -39,17 +39,16 @@ class Atari_DQLAgent():
         self.epsilon = epsilon
         self.a_size = a_size
 
-    def act(self, observation, device, crop):
+    def act(self, observation, device):
         self.q_network.eval()
-        observation = process_image(observation, device=device, crop_top=crop[0], crop_bottom=crop[1], 
-                                    crop_left=crop[2], crop_right=crop[3])
         
         if np.random.rand() < self.epsilon:
             return random.randint(0, self.a_size - 1)
         
-        else:
-            with torch.no_grad():
-                q_values = self.q_network.forward(observation)
-                self.q_network.train()
-                action = torch.argmax(q_values).item()
-                return action
+        observation = to_tensor(observation, device)
+        
+        with torch.no_grad():
+            q_values = self.q_network.forward(observation)
+            self.q_network.train()
+            action = torch.argmax(q_values).item()
+            return action
