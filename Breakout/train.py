@@ -3,11 +3,10 @@ import torch
 import matplotlib.pyplot as plt
 import os
 import sys
-from torch.profiler import profile, record_function, ProfilerActivity, to_tensor
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from RL import Atari_DQLAgent, BasicCNN, ExperienceReplay, Transition, Buffer, process_image
-from tools import count_files, delete_oldest_file
+from RL import Atari_DQLAgent, BasicCNN, ExperienceReplay, Transition, Buffer, to_tensor
+from tools import count_files, delete_worst_model
 
 import argparse
 
@@ -22,7 +21,7 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
     s = to_tensor(observation, device=device)
     
     while True:
-        action = agent.act(observation, device=device, crop=(50, None, None, None))
+        action = agent.act(observation, device=device)
         observation, reward, terminated, truncated, info = env.step(action)
         s_prime = to_tensor(observation, device=device)
         transition = Transition(s, s_prime, action, reward, terminated)
@@ -61,7 +60,7 @@ def test_loop(env, agent, test_steps):
     while steps < test_steps:
         observation, info = env.reset()
         while True:
-            action = agent.act(observation, device=device, crop=(50, None, None, None))
+            action = agent.act(observation, device=device)
             observation, reward, terminated, truncated, info = env.step(action)
             steps += 1
             score += reward
@@ -104,8 +103,8 @@ def main(args):
     env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=False)
     env = gym.wrappers.FrameStack(env, num_stack=4)
     
-    dqn = BasicCNN((80, 80), 4, 4).to(device)
-    target_dqn = BasicCNN((80, 80), 4, 4).to(device)
+    dqn = BasicCNN((84, 84), 4, 4).to(device)
+    target_dqn = BasicCNN((84, 84), 4, 4).to(device)
     replay = ExperienceReplay(capacity=args.capacity)
     
     loss_buffer = Buffer()
@@ -119,7 +118,7 @@ def main(args):
     gamma = args.gamma
     epsilon = args.epsilon
 
-    n_epochs = 0
+    n_epochs = 49
     n_eps_updates = 0
     
     while u < args.max_updates:
@@ -138,14 +137,14 @@ def main(args):
             test_reward_buffer.update_long()
 
             # plot statistics
-            loss_buffer.plot_loss(log_scale=True, path='Breakout/plots/loss.png')
-            q_buffer.plot_loss(path='Breakout/plots/q_vals.png')
-            test_reward_buffer.plot_loss(path='Breakout/plots/test_reward.png')
+            loss_buffer.plot_loss(log_scale=True, path='Breakout/plots2/loss.png')
+            q_buffer.plot_loss(path='Breakout/plots2/q_vals.png')
+            test_reward_buffer.plot_loss(path='Breakout/plots2/test_reward.png')
 
             # save model
-            torch.save(dqn.state_dict(), f'Breakout/models/DQN_Atari_ckpt_{n_epochs}_{epsilon}.pt')
-            if count_files('Breakout/models') > args.max_models:
-                delete_oldest_file('Breakout/models')
+            torch.save(dqn.state_dict(), f'Breakout/models2/DQN_Atari_ckpt_{n_epochs}_{epsilon:.3f}_{reward_per_ep:.3f}.pt')
+            if count_files('Breakout/models2') > args.max_models:
+                delete_worst_model('Breakout/models2')
 
         if u // args.epsilon_decay_period > n_eps_updates:
             n_eps_updates += 1
@@ -158,21 +157,21 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, default='')
     parser.add_argument('--update_period', type=int, default=4)
     parser.add_argument('--target_update_period', type=int, default=10000)
-    parser.add_argument('--epoch_period', type=int, default=25000)
+    parser.add_argument('--epoch_period', type=int, default=int(25e3))
     parser.add_argument('--test_steps', type=int, default=10000)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--epsilon', type=float, default=1)
     parser.add_argument('--epsilon_decay_period', type=int, default=5000, 
                         help='Number of updates between linear (-0.01) epsilon decrease')
-    parser.add_argument('--learning_rate', type=float, default=5e-4)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--gamma_tc', type=float, default=1)
-    parser.add_argument('--capacity', type=int, default=int(5e5))
+    parser.add_argument('--capacity', type=int, default=int(4e5))
     parser.add_argument('--sequential', type=bool, default=False)
     parser.add_argument('--double', type=bool, default=True, help='Whether to use double DQN')
     parser.add_argument('--save_path', type=str, default='models/')
     parser.add_argument('--obs-type', type=str, default='grayscale')
     parser.add_argument('--max_updates', type=int, default=int(10e6))
-    parser.add_argument('--max_models', type=int, default=5, help='Maximum number of models to store in models dir')
+    parser.add_argument('--max_models', type=int, default=3, help='Maximum number of models to store in models dir')
 
     args = parser.parse_args()
     main(args)

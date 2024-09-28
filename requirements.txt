@@ -37,7 +37,6 @@ fsspec==2024.9.0
 geographiclib==2.0
 geopy==2.4.1
 googletransx==2.4.2
--e git+https://github.com/TomHardman/Finance-ML.git@af7cc4300cb9c0e7e1e422f0ff47890233d2f32e#egg=gym_anytrading&subdirectory=gym-anytrading
 gymnasium==0.29.1
 html5lib==1.1
 huggingface-hub==0.25.0

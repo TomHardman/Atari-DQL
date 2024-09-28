@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import numpy as np
 import torch
-from torch.profiler import profile, record_function, ProfilerActivity
 
 class Buffer:
     def __init__(self, ) -> None:
@@ -38,7 +37,7 @@ def to_tensor(image_stack: np.ndarray, device) -> torch.Tensor:
     """
     Converts numpy image stack to torch tensor
     """
-    image_stack = torch.from_numpy(image_stack).to(device)
+    image_stack = torch.from_numpy(np.asarray(image_stack).astype(np.float32)).to(device)
     return image_stack
 
 def process_image(image: list, device, crop_top=None, crop_bottom=None, crop_left=None, crop_right=None,
