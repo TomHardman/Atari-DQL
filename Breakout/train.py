@@ -118,7 +118,7 @@ def main(args):
     gamma = args.gamma
     epsilon = args.epsilon
 
-    n_epochs = 49
+    n_epochs = 0
     n_eps_updates = 0
     
     while u < args.max_updates:
@@ -137,12 +137,12 @@ def main(args):
             test_reward_buffer.update_long()
 
             # plot statistics
-            loss_buffer.plot_loss(log_scale=True, path='Breakout/plots2/loss.png')
-            q_buffer.plot_loss(path='Breakout/plots2/q_vals.png')
-            test_reward_buffer.plot_loss(path='Breakout/plots2/test_reward.png')
+            loss_buffer.plot_loss(log_scale=True, path='Breakout/plots/loss.png')
+            q_buffer.plot_loss(path='Breakout/plots/q_vals.png')
+            test_reward_buffer.plot_loss(path='Breakout/plots/test_reward.png')
 
             # save model
-            torch.save(dqn.state_dict(), f'Breakout/models2/DQN_Atari_ckpt_{n_epochs}_{epsilon:.3f}_{reward_per_ep:.3f}.pt')
+            torch.save(dqn.state_dict(), f'Breakout/models/DQN_Atari_ckpt_{n_epochs}_{epsilon:.3f}_{reward_per_ep:.3f}.pt')
             if count_files('Breakout/models2') > args.max_models:
                 delete_worst_model('Breakout/models2')
 
@@ -165,7 +165,7 @@ if __name__ == '__main__':
                         help='Number of updates between linear (-0.01) epsilon decrease')
     parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--gamma_tc', type=float, default=1)
-    parser.add_argument('--capacity', type=int, default=int(4e5))
+    parser.add_argument('--capacity', type=int, default=int(120e3))
     parser.add_argument('--sequential', type=bool, default=False)
     parser.add_argument('--double', type=bool, default=True, help='Whether to use double DQN')
     parser.add_argument('--save_path', type=str, default='models/')
