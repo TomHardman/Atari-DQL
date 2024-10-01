@@ -8,7 +8,7 @@ class RandomAgent:
     def __init__(self, a_size: int) -> None:
         self.a_size = a_size
 
-    def act(self, observation):
+    def act(self, observation, device=None):
         return random.randint(0, self.a_size - 1)
 
 
@@ -45,7 +45,9 @@ class Atari_DQLAgent():
         if np.random.rand() < self.epsilon:
             return random.randint(0, self.a_size - 1)
         
+        print('To tensor')
         observation = to_tensor(observation, device)
+        print('To tensor done')
         
         with torch.no_grad():
             q_values = self.q_network.forward(observation)
