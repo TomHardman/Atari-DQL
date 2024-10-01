@@ -24,30 +24,41 @@ def main(args):
     if args.agent == "random":
             agent = RandomAgent(a_size=4)
     elif args.agent == "dql":
-        dqn = BasicCNN((84, 84), 4, 4).to(device)
+        dqn = BasicCNN((84, 84), 4, 4, conv3=True).to(device)
         agent = Atari_DQLAgent(a_size=4, epsilon=0.01, q_network=dqn)
-        dqn.load_state_dict(torch.load("Breakout/models/DQN_Atari_ckpt_31_0.100_21.857.pt", map_location=device))
-
+        dqn.load_state_dict(torch.load("Breakout/models/DQN_Atari_ckpt_49_0.100_99.556.pt"))
     if args.render:
-        env = gym.make('Breakout-v0', frameskip=1, full_action_space=False, 
+        env = gym.make('Breakout-v4', full_action_space=False, frameskip=1, 
                        obs_type='grayscale', render_mode='human')
     else:
-        env = gym.make('Breakout-v0', frameskip=1, full_action_space=False, 
+        env = gym.make('Breakout-v4', full_action_space=False, frameskip=1, 
                        obs_type='grayscale')
-    env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=False)
+    env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=True, frame_skip=4)
     env = gym.wrappers.FrameStack(env, num_stack=4)
 
     while episode_count < args.max_episodes:
         observation, info = env.reset()
+
+        first_state = True
         
         done = False
         score = 0
         
         while not done:
-            action = agent.act(observation, device=device)
-            observation, reward, done, _, info = env.step(action)
-            score += reward
+            if first_state:
+                action = 1
+                first_state = False
+            else:
+                action = agent.act(observation, device=device)
+            observation, reward, life_loss, _, info = env.step(action)
 
+            if life_loss:
+                first_state = True
+                if info['lives'] == 0:
+                    done = True
+
+
+            score += reward
         results.append(score)
         episode_count += 1
         print(results)

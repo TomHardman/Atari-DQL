@@ -31,13 +31,21 @@ class BasicCNN(nn.Module):
         self.conv1 = nn.Conv2d(input_channels, 16, kernel_size=8, stride=4)
         self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=2)
         if conv3:
-            self.conv3 = nn.Conv2d(32, 32, kernel_size=3, stride=1)
+            self.conv3 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1)
         else:
             self.conv3 = None
         self.fc1 = nn.Linear(flat, 256)
         self.fc2 = nn.Linear(256, output_dim)
+    
+    def _initialize_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
+        x = x/255.0
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         if self.conv3:
