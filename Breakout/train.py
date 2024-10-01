@@ -3,6 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import os
 import sys
+from torch.nn.utils import clip_grad_value_
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from RL import Atari_DQLAgent, BasicCNN, ExperienceReplay, Transition, Buffer, to_tensor
@@ -17,11 +18,17 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
                update_period=8, target_update_period=500, double=True):
         
     observation, info = env.reset()
+    first_state = True
     dqn.train()
     s = to_tensor(observation, device=device)
     
     while True:
-        action = agent.act(observation, device=device)
+        if first_state:
+            action = 1
+            first_state = False
+        else:
+            action = agent.act(observation, device=device)
+        
         observation, reward, terminated, truncated, info = env.step(action)
         s_prime = to_tensor(observation, device=device)
         transition = Transition(s, s_prime, action, reward, terminated)
@@ -36,19 +43,18 @@ def train_loop(i, u, env, criterion, optimizer, agent, replay: ExperienceReplay,
             if u % 1000 == 0:
                 print(f'Update Step {u}')
             u += 1
-        
-        if u % target_update_period == 0:
-            target_dqn.load_state_dict(dqn.state_dict()) # transfer weights from online network to target network
+
+            if u % target_update_period == 0:
+                target_dqn.load_state_dict(dqn.state_dict()) # transfer weights from online network to target network
         
         done = terminated or truncated
-        if done:
+        if done and info['lives']==0:
             break
 
     return i, u
 
 def test_loop(env, agent, test_steps):
     # Unchanged
-    observation, info = env.reset()
     eps = agent.epsilon
     agent.epsilon = 0.05 # ensure that the agent is acting greedily during test
     results = []
@@ -80,6 +86,9 @@ def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay,
     s_batch, a_batch, r_batch, s_prime_batch, done_batch = replay.sample(batch_size, device=device)
     q_values = dqn(s_batch)
     
+    if len(replay) < 50000:
+        return 0
+
     if double: # online network used to select action, target network used to evaluate action
         q_values_prime = dqn(s_prime_batch)
         q_values_tgt = target_dqn(s_prime_batch)
@@ -95,25 +104,33 @@ def update_dqn(dqn, target_dqn, criterion, optimizer, replay: ExperienceReplay,
     optimizer.zero_grad()
     loss = criterion(q, y)
     loss.backward()
+    clip_grad_value_(dqn.parameters(), 1)
     optimizer.step()
     return loss.item()
 
 def main(args):
-    env = gym.make('ALE/Breakout-v5', frameskip=1, full_action_space=False, obs_type=args.obs_type)
-    env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=False)
-    env = gym.wrappers.FrameStack(env, num_stack=4)
+    env = gym.make('Breakout-v4', full_action_space=False, obs_type=args.obs_type, frameskip=1)
+    train_env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=True, noop_max=15)
+    test_env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=False, noop_max=15)
+    train_env = gym.wrappers.FrameStack(train_env, num_stack=4)
+    test_env = gym.wrappers.FrameStack(test_env, num_stack=4)
     
-    dqn = BasicCNN((84, 84), 4, 4).to(device)
-    target_dqn = BasicCNN((84, 84), 4, 4).to(device)
+    dqn = BasicCNN((84, 84), 4, 4, conv3=True).to(device)
+    target_dqn = BasicCNN((84, 84), 4, 4, conv3=True).to(device)
     replay = ExperienceReplay(capacity=args.capacity)
+
+    if args.model_path:
+        dqn.load_state_dict(torch.load(args.model_path))
+        target_dqn.load_state_dict(torch.load(args.model_path))
     
     loss_buffer = Buffer()
     q_buffer = Buffer()
     test_reward_buffer = Buffer()
 
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(dqn.parameters(), lr=args.learning_rate)
-    agent = Atari_DQLAgent(dqn, args.epsilon, 2)
+    criterion = torch.nn.SmoothL1Loss()
+    #optimizer = torch.optim.Adam(dqn.parameters(), lr=args.learning_rate)
+    optimizer = torch.optim.RMSprop(dqn.parameters(), lr=args.learning_rate, alpha=0.95, eps=1e-06)
+    agent = Atari_DQLAgent(dqn, args.epsilon, 4)
     i, u = 0, 0 # i is the number of steps taken, u is the number of updates performed
     gamma = args.gamma
     epsilon = args.epsilon
@@ -122,14 +139,14 @@ def main(args):
     n_eps_updates = 0
     
     while u < args.max_updates:
-        i, u, = train_loop(i, u, env, criterion, optimizer, loss_buffer=loss_buffer, q_buffer=q_buffer, 
+        i, u, = train_loop(i, u, train_env, criterion, optimizer, loss_buffer=loss_buffer, q_buffer=q_buffer, 
                            agent=agent, replay=replay, dqn=dqn, target_dqn=target_dqn, 
                            batch_size=args.batch_size, update_period=args.update_period, 
                            target_update_period=args.target_update_period, gamma=gamma, double=args.double)
         
         if u // args.epoch_period > n_epochs:
             n_epochs += 1
-            reward_per_ep = test_loop(env, agent, args.test_steps)
+            reward_per_ep = test_loop(test_env, agent, args.test_steps)
             test_reward_buffer.avg = reward_per_ep
 
             loss_buffer.update_long()
@@ -143,8 +160,8 @@ def main(args):
 
             # save model
             torch.save(dqn.state_dict(), f'Breakout/models/DQN_Atari_ckpt_{n_epochs}_{epsilon:.3f}_{reward_per_ep:.3f}.pt')
-            if count_files('Breakout/models2') > args.max_models:
-                delete_worst_model('Breakout/models2')
+            if count_files('Breakout/models') > args.max_models:
+                delete_worst_model('Breakout/models')
 
         if u // args.epsilon_decay_period > n_eps_updates:
             n_eps_updates += 1
@@ -156,17 +173,15 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--model_path', type=str, default='')
     parser.add_argument('--update_period', type=int, default=4)
-    parser.add_argument('--target_update_period', type=int, default=10000)
+    parser.add_argument('--target_update_period', type=int, default=2500)
     parser.add_argument('--epoch_period', type=int, default=int(25e3))
     parser.add_argument('--test_steps', type=int, default=10000)
     parser.add_argument('--gamma', type=float, default=0.99)
     parser.add_argument('--epsilon', type=float, default=1)
-    parser.add_argument('--epsilon_decay_period', type=int, default=5000, 
+    parser.add_argument('--epsilon_decay_period', type=int, default=10000, 
                         help='Number of updates between linear (-0.01) epsilon decrease')
     parser.add_argument('--learning_rate', type=float, default=1e-4)
-    parser.add_argument('--gamma_tc', type=float, default=1)
-    parser.add_argument('--capacity', type=int, default=int(120e3))
-    parser.add_argument('--sequential', type=bool, default=False)
+    parser.add_argument('--capacity', type=int, default=int(100e3))
     parser.add_argument('--double', type=bool, default=True, help='Whether to use double DQN')
     parser.add_argument('--save_path', type=str, default='models/')
     parser.add_argument('--obs-type', type=str, default='grayscale')
