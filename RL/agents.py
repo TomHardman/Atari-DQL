@@ -8,7 +8,7 @@ class RandomAgent:
     def __init__(self, a_size: int) -> None:
         self.a_size = a_size
 
-    def act(self, observation):
+    def act(self, observation, device=None):
         return random.randint(0, self.a_size - 1)
 
 

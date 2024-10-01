@@ -3,14 +3,21 @@ import sys
 import os
 import torch
 import numpy as np
+import gc
 
 import psutil
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from RL import RandomAgent, Atari_DQLAgent, process_image, BasicCNN
+import threading
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+torch.set_num_threads(1)
+
+def render_env(env):
+    while True:
+        env.render()
 
 def memory_usage():
     process = psutil.Process(os.getpid())
@@ -21,12 +28,6 @@ def main(args):
     episode_count = 0
     results = []
 
-    if args.agent == "random":
-            agent = RandomAgent(a_size=4)
-    elif args.agent == "dql":
-        dqn = BasicCNN((84, 84), 4, 4, conv3=True).to(device)
-        agent = Atari_DQLAgent(a_size=4, epsilon=0.01, q_network=dqn)
-        dqn.load_state_dict(torch.load("Breakout/models/DQN_Atari_ckpt_49_0.100_99.556.pt"))
     if args.render:
         env = gym.make('Breakout-v4', full_action_space=False, frameskip=1, 
                        obs_type='grayscale', render_mode='human')
@@ -36,6 +37,13 @@ def main(args):
     env = gym.wrappers.AtariPreprocessing(env, screen_size=84, terminal_on_life_loss=True, frame_skip=4)
     env = gym.wrappers.FrameStack(env, num_stack=4)
 
+    if args.agent == "random":
+            agent = RandomAgent(a_size=4)
+    elif args.agent == "dql":
+        dqn = BasicCNN((84, 84), 4, 4, conv3=True).to(device)
+        agent = Atari_DQLAgent(a_size=4, epsilon=0.0, q_network=dqn)
+        dqn.load_state_dict(torch.load("Breakout/models/DQN_Atari_ckpt_99_0.100_141.000.pt", map_location=device))
+    
     while episode_count < args.max_episodes:
         observation, info = env.reset()
 
@@ -69,7 +77,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--agent", type=str, default='dql', help="Agent to use for playing the game")
     parser.add_argument("--max_episodes", type=int, default=10, help="Number of episodes to play")
-    parser.add_argument("--render", type=bool, default=False, help="Render the game")
+    parser.add_argument("--render", type=bool, default=True, help="Render the game")
     args = parser.parse_args()
 
     main(args)
