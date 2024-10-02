@@ -154,33 +154,33 @@ def main(args):
             test_reward_buffer.update_long()
 
             # plot statistics
-            loss_buffer.plot_loss(log_scale=True, path='Breakout/plots/loss.png')
-            q_buffer.plot_loss(path='Breakout/plots/q_vals.png')
-            test_reward_buffer.plot_loss(path='Breakout/plots/test_reward.png')
+            loss_buffer.plot_loss(log_scale=True, path='Breakout/plots_cont/loss.png')
+            q_buffer.plot_loss(path='Breakout/plots_cont/q_vals.png')
+            test_reward_buffer.plot_loss(path='Breakout/plots_cont/test_reward.png')
 
             # save model
-            torch.save(dqn.state_dict(), f'Breakout/models/DQN_Atari_ckpt_{n_epochs}_{epsilon:.3f}_{reward_per_ep:.3f}.pt')
-            if count_files('Breakout/models') > args.max_models:
-                delete_worst_model('Breakout/models')
+            torch.save(dqn.state_dict(), f'Breakout/models_cont/DQN_Atari_ckpt_{n_epochs}_{epsilon:.3f}_{reward_per_ep:.3f}.pt')
+            if count_files('Breakout/models_cont') > args.max_models:
+                delete_worst_model('Breakout/models_cont')
 
         if u // args.epsilon_decay_period > n_eps_updates:
             n_eps_updates += 1
-            epsilon = max(epsilon-0.01, 0.1) # decrease in epsilon
+            epsilon = max(epsilon-0.01, 0.01) # decrease in epsilon
             agent.epsilon = epsilon
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a DQN agent')
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--model_path', type=str, default='')
+    parser.add_argument('--model_path', type=str, default='Breakout/models/DQN_Atari_ckpt_221_0.100_166.462.pt')
     parser.add_argument('--update_period', type=int, default=4)
     parser.add_argument('--target_update_period', type=int, default=2500)
     parser.add_argument('--epoch_period', type=int, default=int(25e3))
     parser.add_argument('--test_steps', type=int, default=10000)
     parser.add_argument('--gamma', type=float, default=0.99)
-    parser.add_argument('--epsilon', type=float, default=1)
+    parser.add_argument('--epsilon', type=float, default=0.01)
     parser.add_argument('--epsilon_decay_period', type=int, default=10000, 
                         help='Number of updates between linear (-0.01) epsilon decrease')
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--learning_rate', type=float, default=5e-5)
     parser.add_argument('--capacity', type=int, default=int(100e3))
     parser.add_argument('--double', type=bool, default=True, help='Whether to use double DQN')
     parser.add_argument('--save_path', type=str, default='models/')
